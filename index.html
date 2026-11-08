@@ -50,9 +50,11 @@
   .codebox { font-size: 18px; color: #c3cbe0; display: flex; align-items: center; gap: 12px; background: #151b2b; border: 2px solid #3a86ff; border-radius: 14px; padding: 10px 18px; }
   .codebox b { font-size: 34px; letter-spacing: 6px; color: #ffd166; }
   .qrbox { display: flex; align-items: center; gap: 16px; background: #151b2b; border: 2px solid #252e45; border-radius: 14px; padding: 12px 16px; flex-wrap: wrap; justify-content: center; }
-  .qrbox canvas { width: 150px; height: 150px; border-radius: 8px; image-rendering: pixelated; }
+  .qrbox canvas { width: 220px; height: 220px; border-radius: 8px; image-rendering: pixelated; }
   .qrtxt { font-size: 13px; color: #9aa6c0; line-height: 1.6; }
   .qrtxt b { color: #e8ecf4; font-size: 15px; }
+  .qrurl { margin-top: 8px; font-size: 12px; color: #c3cbe0; word-break: break-all; max-width: 320px; }
+  .qrurl.bad { color: #ff8a9a; font-weight: 700; }
   .dmcols { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
   .panel { background: #151b2b; border: 2px solid #252e45; border-radius: 16px; padding: 16px; width: min(440px, 94vw); }
   .panel h2 { font-size: 20px; margin-bottom: 10px; }
@@ -129,7 +131,7 @@
     <div class="codebox">방 코드 <b id="dmCodeShow">-----</b> <button id="dmCopy">복사</button></div>
     <div class="qrbox">
       <canvas id="dmQR" width="200" height="200"></canvas>
-      <div class="qrtxt"><b>📱 QR로 참가</b><br>디벗 카메라로 찍으면 게임이 열리고<br>방 코드가 자동으로 들어가요.<br>이름(별명)만 쓰고 참가를 누르세요.</div>
+      <div class="qrtxt"><b>📱 QR로 참가</b><br>디벗 카메라로 찍으면 게임이 열리고<br>방 코드가 자동으로 들어가요.<br>이름(별명)만 쓰고 참가를 누르세요.<div id="qrUrl" class="qrurl"></div></div>
     </div>
     <div id="dmConn" class="dmmsg"></div>
     <div class="dmcols">
@@ -148,6 +150,9 @@
           <div id="dmBossRow">
             <div class="top"><span>보스</span></div>
             <div class="opts" id="dmBossOpts"><button data-boss="a">🤖 AI가 보스</button><button data-boss="t">👑 선생님이 보스</button></div>
+            <div class="top" style="margin-top:10px"><span>보스 세기</span></div>
+            <div class="opts" id="dmBpOpts"><button data-bp="0.6">쉬움</button><button data-bp="1">보통</button><button data-bp="1.5">강함</button><button data-bp="2">최강</button></div>
+            <div class="note" id="dmBossNote"></div>
           </div>
           <div id="dmSpecRow">
             <div class="top"><span>방장(선생님)은</span></div>
@@ -384,7 +389,8 @@ const BALLS = BALL_STATS.map(([name, s, w, d, f], i) => {
   };
 });
 const BOSS_CH = 99;
-const BOSS = { name: '👹 보스', color: '#c1121f', glow: '#ff6b6b', maxSpeed: 430, accel: 1500, mass: 6, size: 2.8, atk: 2.2, fric: 1, pat: 'boss' };
+const BOSS = { name: '👹 보스', color: '#c1121f', glow: '#ff6b6b', maxSpeed: 480, accel: 1900, mass: 8, size: 3, atk: 2.6, fric: 1, pat: 'boss', hpBase: 1, hpPer: 0.65 };
+const BOSS_POWER = { 0.6: '쉬움', 1: '보통', 1.5: '강함', 2: '최강' }; // 보스 세기: 체력·데미지 배율
 const charOf = ch => (ch === BOSS_CH ? BOSS : BALLS[ch]);
 const stars = n => '★'.repeat(n) + '☆'.repeat(5 - n);
 
@@ -476,14 +482,15 @@ function buildBalls(roster, cfg, myIdx) {
       const k = roster.slice(0, i).filter(x => x[3] === team).length, n = roster.filter(x => x[3] === team).length;
       a = (team ? 0 : Math.PI) + (k + 0.5 - n / 2) * Math.min(0.5, Math.PI * 0.9 / Math.max(1, n));
     }
-    const maxSpin = boss ? Math.round(SPIN_TIME * (2 + 0.5 * nPlayers)) : SPIN_TIME;
+    const bp = +cfg.bp || 1; // 보스 세기
+    const maxSpin = boss ? Math.round(SPIN_TIME * (BOSS.hpBase + BOSS.hpPer * nPlayers) * bp) : SPIN_TIME;
     balls.push({
       x: boss ? 0 : Math.cos(a) * rr, y: boss ? 0 : Math.sin(a) * rr, vx: 0, vy: 0,
       r: base * c.size, m: c.mass, color: c.color, glow: c.glow, pat: c.pat, angle: Math.random() * 6, trail: [],
       player: {
         label: e[1], me: i === myIdx, team, boss, ai: !e[0], aiLevel: cfg.lv, peer: e[0], name: c.name,
         tag: i === myIdx ? '#ffd166' : cfg.mode === 'team' ? TEAM[team].color : boss ? '#ff6b6b' : 'rgba(232,236,244,0.75)',
-        dir: i % 2 ? -1 : 1, accel: c.accel, maxSpeed: c.maxSpeed, atk: c.atk, fric: c.fric,
+        dir: i % 2 ? -1 : 1, accel: c.accel, maxSpeed: c.maxSpeed, atk: boss ? c.atk * (0.5 + 0.5 * bp) * (0.6 + 0.4 * Math.min(1, nPlayers / 20)) : c.atk, fric: c.fric,
         spin: maxSpin, maxSpin, hitFlash: 0, wallCd: 0, healW: 0, healTick: 0, dead: false, place: 0,
       },
     });
@@ -567,7 +574,7 @@ function step(dt) {
     if (b.x + b.r > x1) { b.x = x1 - b.r; touched = true; if (b.vx > 0) { sfx.wall(b.vx); b.vx = -b.vx * BOUNCE; } }
     if (b.y - b.r < y0) { b.y = y0 + b.r; touched = true; if (b.vy < 0) { sfx.wall(-b.vy); b.vy = -b.vy * BOUNCE; } }
     if (b.y + b.r > y1) { b.y = y1 - b.r; touched = true; if (b.vy > 0) { sfx.wall(b.vy); b.vy = -b.vy * BOUNCE; } }
-    if (touched && fighting && P.wallCd <= 0) { P.wallCd = DM_WALL_CD; hitSpin(b, P.maxSpin * DM_WALL_PCT, '#ff5d73'); }
+    if (touched && fighting && P.wallCd <= 0) { P.wallCd = DM_WALL_CD; hitSpin(b, (P.boss ? SPIN_TIME : P.maxSpin) * DM_WALL_PCT, '#ff5d73'); }
   });
 
   // 공끼리 충돌
@@ -1355,7 +1362,7 @@ const dmQ = v => Math.round(v * 1000);
 const dmEnc = new TextEncoder();
 const dm = {
   ns: null, room: null, unsub: null, code: '', role: null,
-  cfg: { max: 30, ai: 0, lv: 'normal', mode: 'solo', boss: 'a', spec: 1 }, hcfg: null,
+  cfg: { max: 30, ai: 0, lv: 'normal', mode: 'solo', boss: 'a', spec: 1, bp: 1.5 }, hcfg: null,
   ch: -1, jt: 0, gid: 0, hostSeen: false, goneTimer: null, lastIn: '', inT: 0, lastErr: null,
 };
 let dmPres = {};
@@ -1398,7 +1405,7 @@ function dmCfgFrom(h) {
     max: Math.max(2, Math.min(30, Math.round(+h.max) || 2)), ai: h.ai ? 1 : 0,
     lv: typeof h.lv === 'string' && dmHas(AI_LEVELS, h.lv) ? h.lv : 'normal',
     mode: ['solo', 'team', 'coop'].includes(h.mode) ? h.mode : 'solo',
-    boss: h.boss === 't' ? 't' : 'a', spec: h.spec ? 1 : 0,
+    boss: h.boss === 't' ? 't' : 'a', spec: h.spec ? 1 : 0, bp: [0.6, 1, 1.5, 2].includes(+h.bp) ? +h.bp : 1.5,
   };
 }
 function dmHostH(ph, extra) { return { code: dm.code, ...dm.cfg, ph, gid: dm.gid, ...(extra || {}) }; }
@@ -1407,9 +1414,19 @@ function dmHostH(ph, extra) { return { code: dm.code, ...dm.cfg, ph, gid: dm.gid
 function dmMsg(t) { $('dmMsg').textContent = t || ''; }
 function dmShowEntry() { $('dmEntry').classList.remove('hidden'); $('dmRoom').classList.add('hidden'); $('dmName').value = dmName; }
 const GAME_URL = location.origin + location.pathname;
+const URL_OK = /^https?:$/.test(location.protocol) && location.origin !== 'null';
 function dmShowRoom() {
   $('dmEntry').classList.add('hidden'); $('dmRoom').classList.remove('hidden');
-  try { QR.draw($('dmQR'), `${GAME_URL}?dm=${dm.code}#dm=${dm.code}`, 300); } catch (e) {}
+  const qu = $('qrUrl'), url = `${GAME_URL}?dm=${dm.code}`;
+  if (URL_OK) {
+    try { QR.draw($('dmQR'), `${url}#dm=${dm.code}`, 440); $('dmQR').classList.remove('hidden'); } catch (e) {}
+    qu.textContent = 'QR 주소: ' + url; qu.classList.remove('bad');
+  } else {
+    // 파일로 열었거나 미리보기에서 열면 주소가 없어서 QR을 만들 수 없음
+    $('dmQR').classList.add('hidden');
+    qu.textContent = '⚠️ 지금 이 게임은 인터넷 주소가 아닌 곳(파일·미리보기)에서 열려 있어서 QR을 만들 수 없어요. GitHub Pages 주소(https://아이디.github.io/저장소이름/)로 열어 주세요.';
+    qu.classList.add('bad');
+  }
   dmRenderChars(); dmRenderRoom();
 }
 function dmSaveName() {
@@ -1522,6 +1539,7 @@ const dmSetCfg = (k, v) => { if (dm.role !== 'host') return; dm.cfg[k] = v; dmSe
 $('dmMax').addEventListener('input', () => dmSetCfg('max', Math.max(2, Math.min(30, +$('dmMax').value))));
 document.querySelectorAll('#dmModeOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('mode', b.dataset.mode)));
 document.querySelectorAll('#dmBossOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('boss', b.dataset.boss)));
+document.querySelectorAll('#dmBpOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('bp', +b.dataset.bp)));
 document.querySelectorAll('#dmSpecOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('spec', +b.dataset.spec)));
 document.querySelectorAll('#dmAiOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('ai', +b.dataset.ai)));
 document.querySelectorAll('#dmLvOpts button').forEach(b => b.addEventListener('click', () => dmSetCfg('lv', b.dataset.lv)));
@@ -1565,11 +1583,12 @@ function dmRenderRoom() {
   $('dmSetWho').textContent = isHost ? '(내가 방장)' : '(선생님만 바꿀 수 있어요)';
   $('dmMax').value = cfg.max; $('dmMaxV').textContent = cfg.max; $('dmMax').disabled = !isHost;
   const opt = (sel, attr, val) => document.querySelectorAll(sel + ' button').forEach(b => { b.classList.toggle('sel', b.dataset[attr] === String(val)); b.disabled = !isHost; });
-  opt('#dmModeOpts', 'mode', cfg.mode); opt('#dmBossOpts', 'boss', cfg.boss); opt('#dmSpecOpts', 'spec', cfg.spec);
+  opt('#dmModeOpts', 'mode', cfg.mode); opt('#dmBossOpts', 'boss', cfg.boss); opt('#dmSpecOpts', 'spec', cfg.spec); opt('#dmBpOpts', 'bp', cfg.bp);
   opt('#dmAiOpts', 'ai', cfg.ai); opt('#dmLvOpts', 'lv', cfg.lv);
   const teacherBoss = cfg.mode === 'coop' && cfg.boss === 't';
   $('dmModeNote').textContent = MODE_NOTE[cfg.mode];
   $('dmBossRow').classList.toggle('hidden', cfg.mode !== 'coop');
+  { const n = Math.max(1, Math.min(cfg.max, (cfg.ai ? cfg.max : dmHumans().length))); $('dmBossNote').textContent = `보스 체력 약 ${Math.round(SPIN_TIME * (BOSS.hpBase + BOSS.hpPer * n) * cfg.bp)} · 데미지 ${(BOSS.atk * (0.5 + 0.5 * cfg.bp) * (0.6 + 0.4 * Math.min(1, n / 20))).toFixed(1)}배 (학생 1명은 체력 100)`; }
   $('dmSpecRow').classList.toggle('hidden', teacherBoss);
   const hostOut = teacherBoss || cfg.spec;
 
